@@ -133,7 +133,7 @@ def price_forecast(stock, start_date, end_date, record_percentage_to_predict):
     df.fillna(value=-99999, inplace=True)
     forecast_out = int(math.ceil(record_percentage_to_predict * len(df)))
     df['label'] = df[forecast_col].shift(-forecast_out)
-    print(df.head())
+    # print(df.head())
 
 
     X = np.array(df.drop(['label'], axis=1))
@@ -149,7 +149,7 @@ def price_forecast(stock, start_date, end_date, record_percentage_to_predict):
     clf = LinearRegression()
     clf.fit(X_train, y_train)
     confidence = clf.score(X_test, y_test)
-    print(confidence)
+    # print(confidence)
     forecast_set = clf.predict(X_lately)
     df['Forecast'] = np.nan
 
@@ -258,6 +258,7 @@ def markovich(start_date, end_date, Num_porSimulation, selected, record_percenta
     yellow_num = df[df['Volatility'] == min_volatility].index
     green_num = df[df['Sharpe Ratio'] == max_sharpe].index
 
+
     # plot frontier, max sharpe & min Volatility values with a scatterplot
     plt.clf()
     plt.style.use('seaborn-v0_8-dark')
@@ -297,25 +298,31 @@ def markovich(start_date, end_date, Num_porSimulation, selected, record_percenta
     """)
     st.pyplot(plt.gcf())
 
+
+
     # Show optimal portfolios in Streamlit
     multseries = pd.Series([1, 1, 1] + [100 for stock in selected],
-                           index=['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected])
+                        index=['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected])
 
-    def format_portfolio(portfolio_row, color, title):
-        st.markdown(
-            f"<div style='background-color:{color};padding:1em;border-radius:0.5em;margin-bottom:1em;'>"
-            f"<b>{title}</b><br><pre style='font-size:1em'>{portfolio_row.multiply(multseries).to_string()}</pre>"
-            "</div>",
-            unsafe_allow_html=True
-        )
-
-    st.subheader("Optimal Portfolios")
+    # Prepare DataFrame for optimal portfolios
+    optimal_rows = []
+    optimal_names = []
     if len(red_num) > 0:
-        format_portfolio(df.loc[red_num[0]], "#ffebee", "🚩 Max Returns Portfolio")
+        optimal_rows.append(df.loc[red_num[0]].multiply(multseries))
+        optimal_names.append("🚩 Max Returns")
     if len(yellow_num) > 0:
-        format_portfolio(df.loc[yellow_num[0]], "#fffde7", "🟨 Minimum Volatility Portfolio")
+        optimal_rows.append(df.loc[yellow_num[0]].multiply(multseries))
+        optimal_names.append("🟨 Min Volatility")
     if len(green_num) > 0:
-        format_portfolio(df.loc[green_num[0]], "#e8f5e9", "🟩 Maximum Sharpe Ratio Portfolio")
+        optimal_rows.append(df.loc[green_num[0]].multiply(multseries))
+        optimal_names.append("🟩 Max Sharpe Ratio")
+
+    if optimal_rows:
+        optimal_df = pd.DataFrame(optimal_rows, index=optimal_names)
+        st.subheader("Optimal Portfolios Table")
+        st.dataframe(optimal_df.style.format("{:.2f}"), hide_index=False)
+    else:
+        st.info("No optimal portfolios found.")
 
     # Optionally, show the dataframe
     with st.expander("Show All Simulated Portfolios DataFrame"):
@@ -327,7 +334,7 @@ st.set_page_config(
     page_title="Portfolio Optimization Tool",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
 # Add custom CSS for styling
@@ -428,6 +435,12 @@ with tab2:
     """)
 
 
+# Add a session state variable to store the latest optimization results
+if 'optimization_result' not in st.session_state:
+    st.session_state['optimization_result'] = None
+if 'last_params' not in st.session_state:
+    st.session_state['last_params'] = {}
+
 with st.sidebar:
     # Select stocks from the UI
     st.subheader("Select Stocks for Your Portfolio")
@@ -470,9 +483,56 @@ with st.sidebar:
 
     run_opt = st.button("Run Optimization", type="primary")
 
-with tab3:
-    if run_opt:
+# Prepare parameters as a dict for comparison
+current_params = {
+    "start_date": start_date,
+    "end_date": end_date,
+    "Num_porSimulation": Num_porSimulation,
+    "selected": tuple(selected),
+    "record_percentage_to_predict": record_percentage_to_predict,
+}
+
+def run_and_store_optimization():
+    # Clear previous matplotlib figures to avoid memory leaks
+    plt.close('all')
+    # Run optimization and store a function to re-render results
+    def render():
         markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict)
+    st.session_state['optimization_result'] = render
+    st.session_state['last_params'] = current_params
+
+# Use Streamlit's cache_resource to persist results until user clicks the button again
+@st.cache_resource(show_spinner="Running portfolio optimization...")
+def cached_markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
+    plt.close('all')
+    markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict)
+
+with tab3:
+    # Use a static variable to track if optimization has been run
+    if "run_opt" not in st.session_state:
+        st.session_state["run_opt"] = False
+        st.session_state["run_opt_params"] = None
+
+    if run_opt:
+        st.session_state["run_opt"] = True
+        st.session_state["run_opt_params"] = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "Num_porSimulation": Num_porSimulation,
+            "selected": tuple(selected),
+            "record_percentage_to_predict": record_percentage_to_predict,
+        }
+        st.rerun()
+
+    if st.session_state.get("run_opt", False):
+        params = st.session_state["run_opt_params"]
+        cached_markovich(
+            params["start_date"],
+            params["end_date"],
+            params["Num_porSimulation"],
+            list(params["selected"]),
+            params["record_percentage_to_predict"]
+        )
     else:
         st.info("Click the button to run the portfolio optimization.")
         st.markdown("""
