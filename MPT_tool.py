@@ -244,6 +244,12 @@ def plot_portfolio_tabs(df, selected):
     # 1. Optimal Portfolios Table
     st.subheader("Optimal Portfolios Table")
     if optimal_df is not None:
+        with st.expander("Index Lexicon"):
+            st.markdown("""
+            - **🚩 Returns**: The expected profit or gain from your investment over a certain time period.
+            - **🟨 Volatility**:  The amount of uncertainty or risk about the size of changes in an asset's value. Higher volatility means prices can swing more wildly.
+            - **🟩 Sharpe Ratio**:  It measures how much excess return you get for each unit of risk (volatility). It's a risk-adjusted performance metric.
+            """)
         st.dataframe(optimal_df.style.format("{:.2f}"), hide_index=False)
     else:
         st.info("No optimal portfolios found.")
@@ -287,38 +293,42 @@ def plot_portfolio_tabs(df, selected):
     plt.tight_layout()
     st.pyplot(plt.gcf())
 
-    # 3. Portfolio Weights Pie and Asset Risk-Return Scatter Side by Side
-    st.subheader("Portfolio Weights & Asset Risk-Return")
-    col1, col2 = st.columns(2)
+    # 3. Portfolio Weights Pie Charts (Max Returns, Min Volatility, Max Sharpe Ratio)
+    st.subheader("Portfolio Weights for Optimal Portfolios")
+    col1, col2, col3 = st.columns(3)
+    # Pie chart for Max Returns portfolio
     with col1:
-        st.markdown("**Max Sharpe Portfolio Weights**")
-        if optimal_df is not None and "🟩 Max Sharpe Ratio" in optimal_df.index:
-            weights = optimal_df.loc["🟩 Max Sharpe Ratio"][3:]
+        st.markdown("**Max Returns Portfolio Weights**")
+        if optimal_df is not None and "🚩 Max Returns" in optimal_df.index:
+            weights = optimal_df.loc["🚩 Max Returns"][3:]
             fig1, ax1 = plt.subplots()
             ax1.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
             ax1.axis('equal')
-            plt.title('Max Sharpe Portfolio Weights')
             st.pyplot(fig1)
         else:
-            st.info("Max Sharpe portfolio not found for pie chart.")
+            st.info("Max Returns portfolio not found for pie chart.")
+    # Pie chart for Min Volatility portfolio
     with col2:
-        st.markdown("**Individual Asset Risk-Return Scatter Plot**")
-        # Calculate asset risk/return
-        asset_returns = []
-        asset_vols = []
-        for stock in selected:
-            weights_col = stock + ' Weight'
-            # Use mean return and std from the simulated portfolios for each asset
-            asset_returns.append(df[weights_col].multiply(df['Returns']/100).mean())
-            asset_vols.append(df[weights_col].multiply(df['Volatility']/100).mean())
-        fig3, ax3 = plt.subplots()
-        ax3.scatter(asset_vols, asset_returns, s=200, c='blue', alpha=0.7)
-        for i, txt in enumerate(selected):
-            ax3.annotate(txt, (asset_vols[i], asset_returns[i]), fontsize=12, fontweight='bold')
-        ax3.set_xlabel('Volatility (Std. Deviation)')
-        ax3.set_ylabel('Expected Return')
-        ax3.set_title('Individual Asset Risk-Return Profile')
-        st.pyplot(fig3)
+        st.markdown("**Min Volatility Portfolio Weights**")
+        if optimal_df is not None and "🟨 Min Volatility" in optimal_df.index:
+            weights = optimal_df.loc["🟨 Min Volatility"][3:]
+            fig2, ax2 = plt.subplots()
+            ax2.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
+            ax2.axis('equal')
+            st.pyplot(fig2)
+        else:
+            st.info("Min Volatility portfolio not found for pie chart.")
+    # Pie chart for Max Sharpe Ratio portfolio
+    with col3:
+        st.markdown("**Max Sharpe Ratio Portfolio Weights**")
+        if optimal_df is not None and "🟩 Max Sharpe Ratio" in optimal_df.index:
+            weights = optimal_df.loc["🟩 Max Sharpe Ratio"][3:]
+            fig3, ax3 = plt.subplots()
+            ax3.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
+            ax3.axis('equal')
+            st.pyplot(fig3)
+        else:
+            st.info("Max Sharpe Ratio portfolio not found for pie chart.")
 def markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
 
     #yf.pdr_override()
@@ -453,39 +463,6 @@ def price_forecast_prophet(stock, start_date, end_date, record_percentage_to_pre
     predicted_series = forecast_df['yhat'].tail(forecast_out)
 
     return predicted_series
-
-def test_prophet_pipeline():
-    """Basic test for Prophet pipeline: fit, predict, and evaluate R² on synthetic data."""
-    import pandas as pd
-    import numpy as np
-    from prophet import Prophet
-    from sklearn.metrics import r2_score
-    import math
-    # Generate synthetic data
-    np.random.seed(42)
-    periods = 100
-    dates = pd.date_range('2020-01-01', periods=periods)
-    y = np.linspace(100, 200, periods) + np.random.normal(0, 5, periods)
-    df = pd.DataFrame({'ds': dates, 'y': y})
-    forecast_out = int(math.ceil(0.2 * len(df)))
-    train_df = df[:-forecast_out]
-    # Fit Prophet
-    model = Prophet()
-    model.fit(train_df)
-    # Predict
-    future = model.make_future_dataframe(periods=forecast_out)
-    forecast = model.predict(future)
-    forecast_df = forecast[['ds', 'yhat']].set_index('ds')
-    predicted_series = forecast_df['yhat'].tail(forecast_out)
-    df_actual = df.set_index('ds')
-    df_actual_trimmed = df_actual[df_actual.index >= predicted_series.index[0]]
-    actual_series = df_actual_trimmed['y']
-    # Align and drop NaNs
-    comparison_df = pd.DataFrame({'Actual': actual_series, 'Predicted': predicted_series}).dropna()
-    assert not comparison_df.empty, "Comparison DataFrame is empty."
-    r2 = r2_score(comparison_df['Actual'], comparison_df['Predicted'])
-    print(f"[TEST] Prophet pipeline R² Score: {r2:.4f}")
-    assert -1 <= r2 <= 1, "R² score out of expected range."
 
 # Set page configuration for the standalone app
 st.set_page_config(
