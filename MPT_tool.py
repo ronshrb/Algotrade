@@ -203,21 +203,65 @@ def random_forest(start_date, end_date, Num_porSimulation, selected, record_perc
 
     # reorder dataframe columns
     df = df[column_order]
+    plot_portfolio_tabs(df, selected)
 
-    # plot frontier, max sharpe & min Volatility values with a scatterplot
-    # find min Volatility & max sharpe values in the dataframe (df)
+def plot_portfolio_tabs(df, selected):
+    import matplotlib.pyplot as plt
+    import streamlit as st
+    import numpy as np
+    import pandas as pd
+    
+    # Find optimal portfolios
     min_volatility = df['Volatility'].min()
-    # min_volatility1 = df['Volatility'].min()+1
     max_sharpe = df['Sharpe Ratio'].max()
     max_return = df['Returns'].max()
     max_vol = df['Volatility'].max()
-    # use the min, max values to locate and create the two special portfolios
     sharpe_portfolio = df.loc[df['Sharpe Ratio'] == max_sharpe]
     min_variance_port = df.loc[df['Volatility'] == min_volatility]
     max_returns = df.loc[df['Returns'] == max_return]
     max_vols = df.loc[df['Volatility'] == max_vol]
+    red_num = df[df["Returns"] == max_return].index
+    yellow_num = df[df['Volatility'] == min_volatility].index
+    green_num = df[df['Sharpe Ratio'] == max_sharpe].index
+    multseries = pd.Series([1, 1, 1] + [100 for stock in selected],
+                        index=['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected])
+    optimal_rows = []
+    optimal_names = []
+    if len(red_num) > 0:
+        optimal_rows.append(df.loc[red_num[0]].multiply(multseries))
+        optimal_names.append("🚩 Max Returns")
+    if len(yellow_num) > 0:
+        optimal_rows.append(df.loc[yellow_num[0]].multiply(multseries))
+        optimal_names.append("🟨 Min Volatility")
+    if len(green_num) > 0:
+        optimal_rows.append(df.loc[green_num[0]].multiply(multseries))
+        optimal_names.append("🟩 Max Sharpe Ratio")
+    if optimal_rows:
+        optimal_df = pd.DataFrame(optimal_rows, index=optimal_names)
+    else:
+        optimal_df = None
 
-    # plot frontier, max sharpe & min Volatility values with a scatterplot
+    # 1. Optimal Portfolios Table
+    st.subheader("Optimal Portfolios Table")
+    if optimal_df is not None:
+        st.dataframe(optimal_df.style.format("{:.2f}"), hide_index=False)
+    else:
+        st.info("No optimal portfolios found.")
+    with st.expander("Show All Simulated Portfolios DataFrame"):
+        st.dataframe(df.style.format("{:.2f}"), hide_index=True)
+
+    # 2. Efficient Frontier Plot
+    st.subheader("Efficient Frontier")
+    with st.expander("What is the Efficient Frontier?"):
+        st.markdown("""
+        The efficient frontier is a concept from Modern Portfolio Theory. It represents the set of optimal portfolios that offer the highest expected return for a given level of risk (volatility), or the lowest risk for a given level of expected return. 
+
+        - Each point on the frontier is a portfolio that is "efficient"—meaning you can't get a higher return without taking on more risk, or reduce risk without lowering your expected return.
+        - Portfolios below the frontier are sub-optimal, because they do not provide enough return for the level of risk.
+        - The shape of the frontier helps investors visualize the trade-off between risk and return, and select a portfolio that matches their risk tolerance.
+
+        The chart below shows the simulated portfolios, with the efficient frontier highlighted by the best combinations of risk and return.
+        """)
     plt.clf()
     plt.style.use('seaborn-v0_8-dark')
     ax = df.plot.scatter(
@@ -241,55 +285,40 @@ def random_forest(start_date, end_date, Num_porSimulation, selected, record_perc
     plt.title('Efficient Frontier')
     plt.legend()
     plt.tight_layout()
-
-    # Show plot in Streamlit
-    st.subheader("Efficient Frontier")
-    with st.expander("What is the Efficient Frontier?"):
-        st.markdown("""
-    The efficient frontier is a concept from Modern Portfolio Theory. It represents the set of optimal portfolios that offer the highest expected return for a given level of risk (volatility), or the lowest risk for a given level of expected return. 
-
-    - Each point on the frontier is a portfolio that is "efficient"—meaning you can't get a higher return without taking on more risk, or reduce risk without lowering your expected return.
-    - Portfolios below the frontier are sub-optimal, because they do not provide enough return for the level of risk.
-    - The shape of the frontier helps investors visualize the trade-off between risk and return, and select a portfolio that matches their risk tolerance.
-
-    The chart below shows the simulated portfolios, with the efficient frontier highlighted by the best combinations of risk and return.
-    """)
     st.pyplot(plt.gcf())
 
-    # Find indices for optimal portfolios
-    red_num = df[df["Returns"] == max_return].index
-    yellow_num = df[df['Volatility'] == min_volatility].index
-    green_num = df[df['Sharpe Ratio'] == max_sharpe].index
-
-    # Show optimal portfolios in Streamlit
-    multseries = pd.Series([1, 1, 1] + [100 for stock in selected],
-                        index=['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected])
-
-    # Prepare DataFrame for optimal portfolios
-    optimal_rows = []
-    optimal_names = []
-    if len(red_num) > 0:
-        optimal_rows.append(df.loc[red_num[0]].multiply(multseries))
-        optimal_names.append("🚩 Max Returns")
-    if len(yellow_num) > 0:
-        optimal_rows.append(df.loc[yellow_num[0]].multiply(multseries))
-        optimal_names.append("🟨 Min Volatility")
-    if len(green_num) > 0:
-        optimal_rows.append(df.loc[green_num[0]].multiply(multseries))
-        optimal_names.append("🟩 Max Sharpe Ratio")
-
-    if optimal_rows:
-        optimal_df = pd.DataFrame(optimal_rows, index=optimal_names)
-        st.subheader("Optimal Portfolios Table")
-        st.dataframe(optimal_df.style.format("{:.2f}"), hide_index=False)
-    else:
-        st.info("No optimal portfolios found.")
-
-    # Optionally, show the dataframe
-    with st.expander("Show All Simulated Portfolios DataFrame"):
-        st.dataframe(df.style.format("{:.2f}"), hide_index=True)
-
-#def markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
+    # 3. Portfolio Weights Pie and Asset Risk-Return Scatter Side by Side
+    st.subheader("Portfolio Weights & Asset Risk-Return")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Max Sharpe Portfolio Weights**")
+        if optimal_df is not None and "🟩 Max Sharpe Ratio" in optimal_df.index:
+            weights = optimal_df.loc["🟩 Max Sharpe Ratio"][3:]
+            fig1, ax1 = plt.subplots()
+            ax1.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
+            ax1.axis('equal')
+            plt.title('Max Sharpe Portfolio Weights')
+            st.pyplot(fig1)
+        else:
+            st.info("Max Sharpe portfolio not found for pie chart.")
+    with col2:
+        st.markdown("**Individual Asset Risk-Return Scatter Plot**")
+        # Calculate asset risk/return
+        asset_returns = []
+        asset_vols = []
+        for stock in selected:
+            weights_col = stock + ' Weight'
+            # Use mean return and std from the simulated portfolios for each asset
+            asset_returns.append(df[weights_col].multiply(df['Returns']/100).mean())
+            asset_vols.append(df[weights_col].multiply(df['Volatility']/100).mean())
+        fig3, ax3 = plt.subplots()
+        ax3.scatter(asset_vols, asset_returns, s=200, c='blue', alpha=0.7)
+        for i, txt in enumerate(selected):
+            ax3.annotate(txt, (asset_vols[i], asset_returns[i]), fontsize=12, fontweight='bold')
+        ax3.set_xlabel('Volatility (Std. Deviation)')
+        ax3.set_ylabel('Expected Return')
+        ax3.set_title('Individual Asset Risk-Return Profile')
+        st.pyplot(fig3)
 def markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
 
     #yf.pdr_override()
@@ -354,123 +383,7 @@ def markovich(start_date, end_date, Num_porSimulation, selected, record_percenta
 
     # reorder dataframe columns
     df = df[column_order]
-
-    # plot frontier, max sharpe & min Volatility values with a scatterplot
-    # find min Volatility & max sharpe values in the dataframe (df)
-    min_volatility = df['Volatility'].min()
-    # min_volatility1 = df['Volatility'].min()+1
-    max_sharpe = df['Sharpe Ratio'].max()
-    max_return = df['Returns'].max()
-    max_vol = df['Volatility'].max()
-    # use the min, max values to locate and create the two special portfolios
-    sharpe_portfolio = df.loc[df['Sharpe Ratio'] == max_sharpe]
-    min_variance_port = df.loc[df['Volatility'] == min_volatility]
-    max_returns = df.loc[df['Returns'] == max_return]
-    max_vols = df.loc[df['Volatility'] == max_vol]
-
-    # Find indices for optimal portfolios
-    red_num = df[df["Returns"] == max_return].index
-    yellow_num = df[df['Volatility'] == min_volatility].index
-    green_num = df[df['Sharpe Ratio'] == max_sharpe].index
-
-
-    # plot frontier, max sharpe & min Volatility values with a scatterplot
-    plt.clf()
-    plt.style.use('seaborn-v0_8-dark')
-    ax = df.plot.scatter(
-        x='Volatility', y='Returns', c='Sharpe Ratio',
-        cmap='RdYlGn', edgecolors='black', figsize=(10, 8), grid=True, alpha=0.8
-    )
-    plt.scatter(
-        x=sharpe_portfolio['Volatility'], y=sharpe_portfolio['Returns'],
-        c='green', marker='D', s=200, label='Max Sharpe'
-    )
-    plt.scatter(
-        x=min_variance_port['Volatility'], y=min_variance_port['Returns'],
-        c='orange', marker='D', s=200, label='Min Volatility'
-    )
-    plt.scatter(
-        x=max_vols['Volatility'], y=max_returns['Returns'],
-        c='red', marker='D', s=200, label='Max Return'
-    )
-    plt.xlabel('Volatility (Std. Deviation) Percentage %')
-    plt.ylabel('Expected Returns Percentage %')
-    plt.title('Efficient Frontier')
-    plt.legend()
-    plt.tight_layout()
-
-    # Show plot in Streamlit
-    st.subheader("Efficient Frontier")
-    with st.expander("What is the Efficient Frontier?"):
-        st.markdown("""
-    The efficient frontier is a concept from Modern Portfolio Theory. It represents the set of optimal portfolios that offer the highest expected return for a given level of risk (volatility), or the lowest risk for a given level of expected return. 
-
-    - Each point on the frontier is a portfolio that is "efficient"—meaning you can't get a higher return without taking on more risk, or reduce risk without lowering your expected return.
-    - Portfolios below the frontier are sub-optimal, because they do not provide enough return for the level of risk.
-    - The shape of the frontier helps investors visualize the trade-off between risk and return, and select a portfolio that matches their risk tolerance.
-
-    The chart below shows the simulated portfolios, with the efficient frontier highlighted by the best combinations of risk and return.
-    """)
-    st.pyplot(plt.gcf())
-
-
-
-    # Show optimal portfolios in Streamlit
-    multseries = pd.Series([1, 1, 1] + [100 for stock in selected],
-                        index=['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected])
-
-    # Prepare DataFrame for optimal portfolios
-    optimal_rows = []
-    optimal_names = []
-    if len(red_num) > 0:
-        optimal_rows.append(df.loc[red_num[0]].multiply(multseries))
-        optimal_names.append("🚩 Max Returns")
-    if len(yellow_num) > 0:
-        optimal_rows.append(df.loc[yellow_num[0]].multiply(multseries))
-        optimal_names.append("🟨 Min Volatility")
-    if len(green_num) > 0:
-        optimal_rows.append(df.loc[green_num[0]].multiply(multseries))
-        optimal_names.append("🟩 Max Sharpe Ratio")
-
-    if optimal_rows:
-        optimal_df = pd.DataFrame(optimal_rows, index=optimal_names)
-        st.subheader("Optimal Portfolios Table")
-        st.dataframe(optimal_df.style.format("{:.2f}"), hide_index=False)
-    else:
-        st.info("No optimal portfolios found.")
-
-    # Optionally, show the dataframe
-    with st.expander("Show All Simulated Portfolios DataFrame"):
-        st.dataframe(df.style.format("{:.2f}"), hide_index=True)
-
-def price_forecast_prophet(stock, start_date, end_date, record_percentage_to_predict):
-    df = yf.download(stock, start=start_date, end=end_date)
-
-    # Only keep 'Date' and 'Close', ensure it's in the right format
-    df = df.reset_index()[['Date', 'Close']].dropna()
-    df.columns = ['ds', 'y']  # Prophet requires these exact names
-    df['y'] = pd.to_numeric(df['y'], errors='coerce')  # Coerce non-numeric values
-
-    # Drop any rows with NaN after coercion
-    df = df.dropna()
-
-    # Forecast horizon
-    forecast_out = int(math.ceil(record_percentage_to_predict * len(df)))
-    train_df = df[:-forecast_out]
-
-    # Fit the Prophet model
-    model = Prophet()
-    model.fit(train_df)
-
-    # Create future dataframe and predict
-    future = model.make_future_dataframe(periods=forecast_out)
-    forecast = model.predict(future)
-
-    # Return only forecasted values (the "future")
-    forecast_df = forecast[['ds', 'yhat']].set_index('ds')
-    predicted_series = forecast_df['yhat'].tail(forecast_out)
-
-    return predicted_series
+    plot_portfolio_tabs(df, selected)
 
 def prophet(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
     frame = {}
@@ -510,73 +423,69 @@ def prophet(start_date, end_date, Num_porSimulation, selected, record_percentage
     df = pd.DataFrame(portfolio)
     column_order = ['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected]
     df = df[column_order]
-    min_volatility = df['Volatility'].min()
-    max_sharpe = df['Sharpe Ratio'].max()
-    max_return = df['Returns'].max()
-    max_vol = df['Volatility'].max()
-    sharpe_portfolio = df.loc[df['Sharpe Ratio'] == max_sharpe]
-    min_variance_port = df.loc[df['Volatility'] == min_volatility]
-    max_returns = df.loc[df['Returns'] == max_return]
-    max_vols = df.loc[df['Volatility'] == max_vol]
-    plt.clf()
-    plt.style.use('seaborn-v0_8-dark')
-    ax = df.plot.scatter(
-        x='Volatility', y='Returns', c='Sharpe Ratio',
-        cmap='RdYlGn', edgecolors='black', figsize=(10, 8), grid=True, alpha=0.8
-    )
-    plt.scatter(
-        x=sharpe_portfolio['Volatility'], y=sharpe_portfolio['Returns'],
-        c='green', marker='D', s=200, label='Max Sharpe'
-    )
-    plt.scatter(
-        x=min_variance_port['Volatility'], y=min_variance_port['Returns'],
-        c='orange', marker='D', s=200, label='Min Volatility'
-    )
-    plt.scatter(
-        x=max_vols['Volatility'], y=max_returns['Returns'],
-        c='red', marker='D', s=200, label='Max Return'
-    )
-    plt.xlabel('Volatility (Std. Deviation) Percentage %')
-    plt.ylabel('Expected Returns Percentage %')
-    plt.title('Efficient Frontier')
-    plt.legend()
-    plt.tight_layout()
-    st.subheader("Efficient Frontier")
-    with st.expander("What is the Efficient Frontier?"):
-        st.markdown("""
-    The efficient frontier is a concept from Modern Portfolio Theory. It represents the set of optimal portfolios that offer the highest expected return for a given level of risk (volatility), or the lowest risk for a given level of expected return. 
+    plot_portfolio_tabs(df, selected)
 
-    - Each point on the frontier is a portfolio that is "efficient"—meaning you can't get a higher return without taking on more risk, or reduce risk without lowering your expected return.
-    - Portfolios below the frontier are sub-optimal, because they do not provide enough return for the level of risk.
-    - The shape of the frontier helps investors visualize the trade-off between risk and return, and select a portfolio that matches their risk tolerance.
+def price_forecast_prophet(stock, start_date, end_date, record_percentage_to_predict):
+    df = yf.download(stock, start=start_date, end=end_date)
 
-    The chart below shows the simulated portfolios, with the efficient frontier highlighted by the best combinations of risk and return.
-    """)
-    st.pyplot(plt.gcf())
-    red_num = df[df["Returns"] == max_return].index
-    yellow_num = df[df['Volatility'] == min_volatility].index
-    green_num = df[df['Sharpe Ratio'] == max_sharpe].index
-    multseries = pd.Series([1, 1, 1] + [100 for stock in selected],
-                        index=['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected])
-    optimal_rows = []
-    optimal_names = []
-    if len(red_num) > 0:
-        optimal_rows.append(df.loc[red_num[0]].multiply(multseries))
-        optimal_names.append("🚩 Max Returns")
-    if len(yellow_num) > 0:
-        optimal_rows.append(df.loc[yellow_num[0]].multiply(multseries))
-        optimal_names.append("🟨 Min Volatility")
-    if len(green_num) > 0:
-        optimal_rows.append(df.loc[green_num[0]].multiply(multseries))
-        optimal_names.append("🟩 Max Sharpe Ratio")
-    if optimal_rows:
-        optimal_df = pd.DataFrame(optimal_rows, index=optimal_names)
-        st.subheader("Optimal Portfolios Table")
-        st.dataframe(optimal_df.style.format("{:.2f}"), hide_index=False)
-    else:
-        st.info("No optimal portfolios found.")
-    with st.expander("Show All Simulated Portfolios DataFrame"):
-        st.dataframe(df.style.format("{:.2f}"), hide_index=True)
+    # Only keep 'Date' and 'Close', ensure it's in the right format
+    df = df.reset_index()[['Date', 'Close']].dropna()
+    df.columns = ['ds', 'y']  # Prophet requires these exact names
+    df['y'] = pd.to_numeric(df['y'], errors='coerce')  # Coerce non-numeric values
+
+    # Drop any rows with NaN after coercion
+    df = df.dropna()
+
+    # Forecast horizon
+    forecast_out = int(math.ceil(record_percentage_to_predict * len(df)))
+    train_df = df[:-forecast_out]
+
+    # Fit the Prophet model
+    model = Prophet()
+    model.fit(train_df)
+
+    # Create future dataframe and predict
+    future = model.make_future_dataframe(periods=forecast_out)
+    forecast = model.predict(future)
+
+    # Return only forecasted values (the "future")
+    forecast_df = forecast[['ds', 'yhat']].set_index('ds')
+    predicted_series = forecast_df['yhat'].tail(forecast_out)
+
+    return predicted_series
+
+def test_prophet_pipeline():
+    """Basic test for Prophet pipeline: fit, predict, and evaluate R² on synthetic data."""
+    import pandas as pd
+    import numpy as np
+    from prophet import Prophet
+    from sklearn.metrics import r2_score
+    import math
+    # Generate synthetic data
+    np.random.seed(42)
+    periods = 100
+    dates = pd.date_range('2020-01-01', periods=periods)
+    y = np.linspace(100, 200, periods) + np.random.normal(0, 5, periods)
+    df = pd.DataFrame({'ds': dates, 'y': y})
+    forecast_out = int(math.ceil(0.2 * len(df)))
+    train_df = df[:-forecast_out]
+    # Fit Prophet
+    model = Prophet()
+    model.fit(train_df)
+    # Predict
+    future = model.make_future_dataframe(periods=forecast_out)
+    forecast = model.predict(future)
+    forecast_df = forecast[['ds', 'yhat']].set_index('ds')
+    predicted_series = forecast_df['yhat'].tail(forecast_out)
+    df_actual = df.set_index('ds')
+    df_actual_trimmed = df_actual[df_actual.index >= predicted_series.index[0]]
+    actual_series = df_actual_trimmed['y']
+    # Align and drop NaNs
+    comparison_df = pd.DataFrame({'Actual': actual_series, 'Predicted': predicted_series}).dropna()
+    assert not comparison_df.empty, "Comparison DataFrame is empty."
+    r2 = r2_score(comparison_df['Actual'], comparison_df['Predicted'])
+    print(f"[TEST] Prophet pipeline R² Score: {r2:.4f}")
+    assert -1 <= r2 <= 1, "R² score out of expected range."
 
 # Set page configuration for the standalone app
 st.set_page_config(
