@@ -251,6 +251,42 @@ def plot_portfolio_tabs(df, selected):
             - **🟩 Sharpe Ratio**:  It measures how much excess return you get for each unit of risk (volatility). It's a risk-adjusted performance metric.
             """)
         st.dataframe(optimal_df.style.format("{:.2f}"), hide_index=False)
+        # Portfolio Weights Pie Charts (Max Returns, Min Volatility, Max Sharpe Ratio)
+        st.markdown("### Portfolio Weights for Optimal Portfolios")
+        col1, col2, col3 = st.columns(3)
+        # Pie chart for Max Returns portfolio
+        with col1:
+            st.markdown("**Max Returns Portfolio Weights**")
+            if "🚩 Max Returns" in optimal_df.index:
+                weights = optimal_df.loc["🚩 Max Returns"][3:]
+                fig1, ax1 = plt.subplots()
+                ax1.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
+                ax1.axis('equal')
+                st.pyplot(fig1)
+            else:
+                st.info("Max Returns portfolio not found for pie chart.")
+        # Pie chart for Min Volatility portfolio
+        with col2:
+            st.markdown("**Min Volatility Portfolio Weights**")
+            if "🟨 Min Volatility" in optimal_df.index:
+                weights = optimal_df.loc["🟨 Min Volatility"][3:]
+                fig2, ax2 = plt.subplots()
+                ax2.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
+                ax2.axis('equal')
+                st.pyplot(fig2)
+            else:
+                st.info("Min Volatility portfolio not found for pie chart.")
+        # Pie chart for Max Sharpe Ratio portfolio
+        with col3:
+            st.markdown("**Max Sharpe Ratio Portfolio Weights**")
+            if "🟩 Max Sharpe Ratio" in optimal_df.index:
+                weights = optimal_df.loc["🟩 Max Sharpe Ratio"][3:]
+                fig3, ax3 = plt.subplots()
+                ax3.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
+                ax3.axis('equal')
+                st.pyplot(fig3)
+            else:
+                st.info("Max Sharpe Ratio portfolio not found for pie chart.")
     else:
         st.info("No optimal portfolios found.")
     with st.expander("Show All Simulated Portfolios DataFrame"):
@@ -293,42 +329,7 @@ def plot_portfolio_tabs(df, selected):
     plt.tight_layout()
     st.pyplot(plt.gcf())
 
-    # 3. Portfolio Weights Pie Charts (Max Returns, Min Volatility, Max Sharpe Ratio)
-    st.subheader("Portfolio Weights for Optimal Portfolios")
-    col1, col2, col3 = st.columns(3)
-    # Pie chart for Max Returns portfolio
-    with col1:
-        st.markdown("**Max Returns Portfolio Weights**")
-        if optimal_df is not None and "🚩 Max Returns" in optimal_df.index:
-            weights = optimal_df.loc["🚩 Max Returns"][3:]
-            fig1, ax1 = plt.subplots()
-            ax1.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
-            ax1.axis('equal')
-            st.pyplot(fig1)
-        else:
-            st.info("Max Returns portfolio not found for pie chart.")
-    # Pie chart for Min Volatility portfolio
-    with col2:
-        st.markdown("**Min Volatility Portfolio Weights**")
-        if optimal_df is not None and "🟨 Min Volatility" in optimal_df.index:
-            weights = optimal_df.loc["🟨 Min Volatility"][3:]
-            fig2, ax2 = plt.subplots()
-            ax2.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
-            ax2.axis('equal')
-            st.pyplot(fig2)
-        else:
-            st.info("Min Volatility portfolio not found for pie chart.")
-    # Pie chart for Max Sharpe Ratio portfolio
-    with col3:
-        st.markdown("**Max Sharpe Ratio Portfolio Weights**")
-        if optimal_df is not None and "🟩 Max Sharpe Ratio" in optimal_df.index:
-            weights = optimal_df.loc["🟩 Max Sharpe Ratio"][3:]
-            fig3, ax3 = plt.subplots()
-            ax3.pie(weights, labels=selected, autopct='%1.1f%%', startangle=90, counterclock=False)
-            ax3.axis('equal')
-            st.pyplot(fig3)
-        else:
-            st.info("Max Sharpe Ratio portfolio not found for pie chart.")
+
 def markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
 
     #yf.pdr_override()
