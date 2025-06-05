@@ -15,105 +15,19 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 import datetime
 from scipy.optimize import minimize
+from sklearn.ensemble import RandomForestRegressor
+
+
 
 def fetch_stock_tickers():
     """
     Fetches stock tickers from major indices and returns them as a DataFrame
     """
-    # Define major indices to fetch tickers from
-    indices = {
-        'S&P 500': '^GSPC',
-        'Dow Jones': '^DJI',
-        'NASDAQ': '^IXIC',
-        'Russell 2000': '^RUT'
-    }
-    
-    all_tickers = []
-    
-    try:
-        # S&P 500 companies
-        sp500 = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
-        sp500_tickers = sp500.set_index('Symbol')['Security'].to_dict()
-        for ticker, name in sp500_tickers.items():
-            all_tickers.append({
-                'Ticker': ticker,
-                'Company': name,
-                'Index': 'S&P 500'
-            })
-        
-        # Add some popular tech stocks that might not be in the indices
-        popular_tickers = {
-            'AAPL': 'Apple Inc.',
-            'MSFT': 'Microsoft Corporation',
-            'GOOGL': 'Alphabet Inc.',
-            'AMZN': 'Amazon.com, Inc.',
-            'META': 'Meta Platforms, Inc.',
-            'NFLX': 'Netflix, Inc.',
-            'TSLA': 'Tesla, Inc.',
-            'NVDA': 'NVIDIA Corporation',
-            'AMD': 'Advanced Micro Devices, Inc.',
-            'INTC': 'Intel Corporation'
-        }
-        
-        for ticker, name in popular_tickers.items():
-            if not any(t['Ticker'] == ticker for t in all_tickers):
-                all_tickers.append({
-                    'Ticker': ticker,
-                    'Company': name,
-                    'Index': 'Popular'
-                })
-                
-    except Exception as e:
-        st.warning(f"Error fetching stock data: {e}")
-        # Fallback to basic tickers if web scraping fails
-        fallback_tickers = {
-            'AAPL': 'Apple Inc.',
-            'MSFT': 'Microsoft Corporation',
-            'GOOGL': 'Alphabet Inc.',
-            'AMZN': 'Amazon.com, Inc.',
-            'FB': 'Meta Platforms, Inc.',
-            'NFLX': 'Netflix, Inc.',
-            'TSLA': 'Tesla, Inc.',
-            'NVDA': 'NVIDIA Corporation',
-            'JPM': 'JPMorgan Chase & Co.',
-            'V': 'Visa Inc.'
-        }
-        for ticker, name in fallback_tickers.items():
-            all_tickers.append({
-                'Ticker': ticker,
-                'Company': name,
-                'Index': 'Popular'
-            })
-    
-    return pd.DataFrame(all_tickers)
 
-def fetch_stock_tickers():
-    """
-    Fetches stock tickers from major indices and returns them as a DataFrame
-    """
-    # # Define major indices to fetch tickers from
-    # indices = {
-    #     'S&P 500': '^GSPC',
-    #     'Dow Jones': '^DJI',
-    #     'NASDAQ': '^IXIC',
-    #     'Russell 2000': '^RUT'
-    # }
     
     all_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NFLX', 'TSLA', 'NVDA', 'AMD', 'INTC']
     
-    # try:
-    #     # S&P 500 companies
-    #     sp500 = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
-    #     sp500_tickers = sp500.set_index('Symbol')['Security'].to_dict()
-    #     for ticker, name in sp500_tickers.items():
-    #         all_tickers.append(ticker)
 
-                
-    # except Exception as e:
-    #     st.warning(f"Error fetching stock data: {e}")
-    #     # Fallback to basic tickers if web scraping fails
-    #     all_tickers = ['APPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NFLX', 'TSLA', 'NVDA', 'AMD', 'INTC']
-    
     return all_tickers
 
 
@@ -173,6 +87,206 @@ def price_forecast(stock, start_date, end_date, record_percentage_to_predict):
     col = df['Forecast']
     col = col.dropna()
     return col
+
+def price_forecast_rf(stock, start_date, end_date, record_percentage_to_predict):
+    """
+
+    """
+    df = yf.download(stock, start=start_date, end=end_date)
+
+    df['HL_PCT'] = (df['High'] - df['Low']) / df['Low'] * 100.0
+    df['PCT_change'] = (df['Close'] - df['Open']) / df['Open'] * 100.0
+
+    df = df[['Close', 'HL_PCT', 'PCT_change', 'Volume']]
+
+    forecast_col = 'Close'
+    # forecast_col = 'Adj. Close'
+    df.fillna(value=-99999, inplace=True)
+    forecast_out = int(math.ceil(record_percentage_to_predict * len(df)))
+    df['label'] = df[forecast_col].shift(-forecast_out)
+    print(df.head())
+
+
+    X = np.array(df.drop(['label'], axis=1))
+    X = preprocessing.scale(X)
+    X_lately = X[-forecast_out:]
+    X = X[:-forecast_out]
+    df.dropna(inplace=True)
+    df['Close'].plot()
+    y = np.array(df['label'])
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=record_percentage_to_predict)
+    # clf =  svm.SVR() # #LinearRegression()
+    clf = RandomForestRegressor(n_estimators=100, random_state=42)
+    clf.fit(X_train, y_train)
+    confidence = clf.score(X_test, y_test)
+    # print(confidence)
+    forecast_set = clf.predict(X_lately)
+    df['Forecast'] = np.nan
+
+    last_date = df.iloc[-1].name
+    last_unix = last_date.timestamp()
+    one_day = 86400
+    next_unix = last_unix + one_day
+
+    for i in forecast_set:
+        next_date = datetime.datetime.fromtimestamp(next_unix)
+        next_unix += 86400
+        df.loc[next_date] = [np.nan for _ in range(len(df.columns) - 1)] + [i]
+
+    col = df['Forecast']
+    col = col.dropna()
+    return col
+
+def random_forest(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
+
+    #yf.pdr_override()
+    frame = {}
+    for stock in selected:
+        # call price_forecast on each stock and get prediction for it's prices
+        price = price_forecast_rf(stock, start_date, end_date, record_percentage_to_predict)
+        frame[stock] = price
+    #frame.to_csv('1.csv')
+    table = pd.DataFrame(frame)
+    plt.plot(pd.DataFrame(frame))
+    pd.DataFrame(frame).to_csv('Out.csv')
+
+    returns_daily = table.pct_change()
+    returns_daily.to_csv('Out1.csv')
+    returns_annual = ((1 + returns_daily.mean()) ** 254) - 1
+    returns_annual.to_csv('Out2.csv')
+
+    # get daily and covariance of returns of the stock
+    cov_daily = returns_daily.cov()
+    cov_annual = cov_daily * 250
+
+    # empty lists to store returns, volatility and weights of imiginary portfolios
+    port_returns = []
+    port_volatility = []
+    sharpe_ratio = []
+    stock_weights = []
+
+    # set the number of combinations for imaginary portfolios
+    num_assets = len(selected)
+    num_portfolios = Num_porSimulation  # Change porfolio numbers here
+
+    # set random seed for reproduction's sake
+    np.random.seed(101)
+
+    # populate the empty lists with each portfolios returns,risk and weights
+    for single_portfolio in range(num_portfolios):
+        weights = np.random.random(num_assets)
+        weights /= np.sum(weights)
+        returns = np.dot(weights, returns_annual)
+        volatility = np.sqrt(np.dot(weights.T, np.dot(cov_annual, weights)))
+        sharpe = returns / volatility
+        sharpe_ratio.append(sharpe)
+        port_returns.append(returns * 100)
+        port_volatility.append(volatility * 100)
+        stock_weights.append(weights)
+
+    # a dictionary for Returns and Risk values of each portfolio
+    portfolio = {'Returns': port_returns,
+                 'Volatility': port_volatility,
+                 'Sharpe Ratio': sharpe_ratio}
+
+    # extend original dictionary to accomodate each ticker and weight in the portfolio
+    for counter, symbol in enumerate(selected):
+        portfolio[symbol + ' Weight'] = [Weight[counter] for Weight in stock_weights]
+
+    # make a nice dataframe of the extended dictionary
+    df = pd.DataFrame(portfolio)
+
+    # get better labels for desired arrangement of columns
+    column_order = ['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected]
+
+    # reorder dataframe columns
+    df = df[column_order]
+
+    # plot frontier, max sharpe & min Volatility values with a scatterplot
+    # find min Volatility & max sharpe values in the dataframe (df)
+    min_volatility = df['Volatility'].min()
+    # min_volatility1 = df['Volatility'].min()+1
+    max_sharpe = df['Sharpe Ratio'].max()
+    max_return = df['Returns'].max()
+    max_vol = df['Volatility'].max()
+    # use the min, max values to locate and create the two special portfolios
+    sharpe_portfolio = df.loc[df['Sharpe Ratio'] == max_sharpe]
+    min_variance_port = df.loc[df['Volatility'] == min_volatility]
+    max_returns = df.loc[df['Returns'] == max_return]
+    max_vols = df.loc[df['Volatility'] == max_vol]
+
+    # plot frontier, max sharpe & min Volatility values with a scatterplot
+    plt.clf()
+    plt.style.use('seaborn-v0_8-dark')
+    ax = df.plot.scatter(
+        x='Volatility', y='Returns', c='Sharpe Ratio',
+        cmap='RdYlGn', edgecolors='black', figsize=(10, 8), grid=True, alpha=0.8
+    )
+    plt.scatter(
+        x=sharpe_portfolio['Volatility'], y=sharpe_portfolio['Returns'],
+        c='green', marker='D', s=200, label='Max Sharpe'
+    )
+    plt.scatter(
+        x=min_variance_port['Volatility'], y=min_variance_port['Returns'],
+        c='orange', marker='D', s=200, label='Min Volatility'
+    )
+    plt.scatter(
+        x=max_vols['Volatility'], y=max_returns['Returns'],
+        c='red', marker='D', s=200, label='Max Return'
+    )
+    plt.xlabel('Volatility (Std. Deviation) Percentage %')
+    plt.ylabel('Expected Returns Percentage %')
+    plt.title('Efficient Frontier')
+    plt.legend()
+    plt.tight_layout()
+
+    # Show plot in Streamlit
+    st.subheader("Efficient Frontier")
+    with st.expander("What is the Efficient Frontier?"):
+        st.markdown("""
+    The efficient frontier is a concept from Modern Portfolio Theory. It represents the set of optimal portfolios that offer the highest expected return for a given level of risk (volatility), or the lowest risk for a given level of expected return. 
+
+    - Each point on the frontier is a portfolio that is "efficient"—meaning you can't get a higher return without taking on more risk, or reduce risk without lowering your expected return.
+    - Portfolios below the frontier are sub-optimal, because they do not provide enough return for the level of risk.
+    - The shape of the frontier helps investors visualize the trade-off between risk and return, and select a portfolio that matches their risk tolerance.
+
+    The chart below shows the simulated portfolios, with the efficient frontier highlighted by the best combinations of risk and return.
+    """)
+    st.pyplot(plt.gcf())
+
+    # Find indices for optimal portfolios
+    red_num = df[df["Returns"] == max_return].index
+    yellow_num = df[df['Volatility'] == min_volatility].index
+    green_num = df[df['Sharpe Ratio'] == max_sharpe].index
+
+    # Show optimal portfolios in Streamlit
+    multseries = pd.Series([1, 1, 1] + [100 for stock in selected],
+                        index=['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected])
+
+    # Prepare DataFrame for optimal portfolios
+    optimal_rows = []
+    optimal_names = []
+    if len(red_num) > 0:
+        optimal_rows.append(df.loc[red_num[0]].multiply(multseries))
+        optimal_names.append("🚩 Max Returns")
+    if len(yellow_num) > 0:
+        optimal_rows.append(df.loc[yellow_num[0]].multiply(multseries))
+        optimal_names.append("🟨 Min Volatility")
+    if len(green_num) > 0:
+        optimal_rows.append(df.loc[green_num[0]].multiply(multseries))
+        optimal_names.append("🟩 Max Sharpe Ratio")
+
+    if optimal_rows:
+        optimal_df = pd.DataFrame(optimal_rows, index=optimal_names)
+        st.subheader("Optimal Portfolios Table")
+        st.dataframe(optimal_df.style.format("{:.2f}"), hide_index=False)
+    else:
+        st.info("No optimal portfolios found.")
+
+    # Optionally, show the dataframe
+    with st.expander("Show All Simulated Portfolios DataFrame"):
+        st.dataframe(df.style.format("{:.2f}"), hide_index=True)
 
 #def markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
 def markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
@@ -328,7 +442,6 @@ def markovich(start_date, end_date, Num_porSimulation, selected, record_percenta
     with st.expander("Show All Simulated Portfolios DataFrame"):
         st.dataframe(df.style.format("{:.2f}"), hide_index=True)
 
-
 # Set page configuration for the standalone app
 st.set_page_config(
     page_title="Portfolio Optimization Tool",
@@ -442,6 +555,15 @@ if 'last_params' not in st.session_state:
     st.session_state['last_params'] = {}
 
 with st.sidebar:
+    # models
+    models = {'Linear Regression': markovich, 'Random Forest': random_forest}
+    st.subheader("Pick a model for price forecasting")
+    selected_model = st.selectbox(
+        "Select Model",
+        options=list(models.keys()),
+        index=0,  # Default to the first model
+        help="Choose a model for price forecasting."
+    )
     # Select stocks from the UI
     st.subheader("Select Stocks for Your Portfolio")
     # Fetch stock tickers
@@ -497,16 +619,12 @@ def run_and_store_optimization():
     plt.close('all')
     # Run optimization and store a function to re-render results
     def render():
-        markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict)
+        models[selected_model](start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict)
+    
     st.session_state['optimization_result'] = render
     st.session_state['last_params'] = current_params
 
-# Use Streamlit's cache_resource to persist results until user clicks the button again
-@st.cache_resource(show_spinner="Running portfolio optimization...")
-def cached_markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
-    plt.close('all')
-    markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict)
-
+# Remove the cache_resource function and use direct calls instead
 with tab3:
     # Use a static variable to track if optimization has been run
     if "run_opt" not in st.session_state:
@@ -526,7 +644,8 @@ with tab3:
 
     if st.session_state.get("run_opt", False):
         params = st.session_state["run_opt_params"]
-        cached_markovich(
+        # Directly call the selected model function instead of cached_model
+        models[selected_model](
             params["start_date"],
             params["end_date"],
             params["Num_porSimulation"],
