@@ -675,10 +675,11 @@ with tab2:
     st.markdown("""
     **🔧 Steps to Optimize Your Portfolio:**
     
-    1. **Select Stocks**: Choose the stocks you want to include in your portfolio.
-    2. **Set Parameters**: Define the time period and number of simulations for optimization.
-    3. **Run Optimization**: Click the button to run the MPT optimization.
-    4. **View Results**: Analyze the optimal portfolio, including expected returns, volatility, and weights of each stock.
+    1. **Select Model**: Choose a forecasting model (e.g., Linear Regression, Random Forest, Prophet).
+    2. **Select Stocks**: Choose the stocks you want to include in your portfolio.
+    3. **Set Parameters**: Define the time period and number of simulations for optimization.
+    4. **Run Optimization**: Click the button to run the MPT optimization.
+    5. **View Results**: Analyze the optimal portfolio, including expected returns, volatility, and weights of each stock.
     
     **📊 Visualization**: The tool will also display a graph of the efficient frontier, helping you visualize the risk-return trade-off of your selected portfolio.
     """)
