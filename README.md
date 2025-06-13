@@ -2,6 +2,12 @@
 
 This is a web application built using Streamlit that allows you to analyze stocks, forecast prices, and optimize investment portfolios using algorithmic trading techniques.
 
+## Try the Web App Online
+
+You can use the Modern Portfolio Theory (MPT) Optimizer directly in your browser:
+
+[Launch the Algotrade MPT Web App](https://algotrade-mpt-tool.streamlit.app/)
+
 ## Features
 
 ### 1. Data Visualization Tab
@@ -23,6 +29,12 @@ This is a web application built using Streamlit that allows you to analyze stock
 - Find optimal portfolio allocations for different risk-return profiles
 - Analyze asset correlation for effective diversification
 
+### 4. Investment Simulator Tab
+- Simulate how an initial investment would have grown over time in each optimal portfolio
+- No need to select a forecast start or end date—simulation uses the full available period
+- Visualize portfolio value evolution with interactive charts
+- Compare different optimal strategies (Max Returns, Min Volatility, Max Sharpe Ratio)
+
 ## Standalone Modern Portfolio Theory (MPT) Tool
 
 For users specifically interested in portfolio optimization, a standalone version of the MPT tool is available:
@@ -36,12 +48,6 @@ For users specifically interested in portfolio optimization, a standalone versio
 - Download portfolio simulation results for further analysis
 - Analyze asset correlation matrix
 
-### How to Run the Standalone MPT Tool:
-1. On Windows, double-click the `start_mpt_tool.bat` file, or
-2. In command line, run:
-```bash
-python run_mpt_app.py
-```
 
 For detailed information about Modern Portfolio Theory and how to use the tool effectively, see the [MPT_GUIDE.md](MPT_GUIDE.md) file.
 - Visualize the Efficient Frontier with interactive charts
@@ -62,7 +68,7 @@ pip install -r requirements.txt
 3. Run the Streamlit app:
 
 ```bash
-streamlit run streamlit_app.py
+streamlit run MPT_tool.py
 ```
 
 ## Usage
@@ -75,8 +81,8 @@ streamlit run streamlit_app.py
 
 ## Models
 
-1. **XGBoost Standard** - Uses a standard XGBoost regressor for forecasting
-2. **XGBoost Recursive** - Uses a recursive approach where each prediction is fed back as a feature for the next prediction
+1. **Linear Regression** - Uses a standard linear regression model for price forecasting
+2. **Random Forest** - Uses a random forest regressor for price forecasting
 
 ## Modern Portfolio Theory (MPT)
 
@@ -87,11 +93,7 @@ The Portfolio Optimization tab implements Modern Portfolio Theory, which helps i
 - Find the optimal balance between risk and return (Sharpe ratio)
 - Create diversified portfolios that reduce overall risk
 
-To use the MPT tool independently, run:
 
-```bash
-streamlit run run_mpt_app.py
-```
 
 ## Requirements
 
