@@ -16,7 +16,6 @@ from sklearn.linear_model import LinearRegression
 import datetime
 from scipy.optimize import minimize
 from sklearn.ensemble import RandomForestRegressor
-from prophet import Prophet
 
 
 
@@ -105,7 +104,7 @@ def price_forecast_rf(stock, start_date, end_date, record_percentage_to_predict)
     df.fillna(value=-99999, inplace=True)
     forecast_out = int(math.ceil(record_percentage_to_predict * len(df)))
     df['label'] = df[forecast_col].shift(-forecast_out)
-    print(df.head())
+    
 
 
     X = np.array(df.drop(['label'], axis=1))
@@ -139,43 +138,44 @@ def price_forecast_rf(stock, start_date, end_date, record_percentage_to_predict)
     col = col.dropna()
     return col
 
-def random_forest(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
-
-    #yf.pdr_override()
+def portfolio_simulation(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict, model_type="linear"):
+    """
+    Unified portfolio simulation for Markovich (linear regression) and Random Forest.
+    model_type: 'linear' for Markovich, 'rf' for Random Forest
+    """
     frame = {}
     for stock in selected:
-        # call price_forecast on each stock and get prediction for it's prices
-        price = price_forecast_rf(stock, start_date, end_date, record_percentage_to_predict)
+        if model_type == "rf":
+            price = price_forecast_rf(stock, start_date, end_date, record_percentage_to_predict)
+        else:
+            price = price_forecast(stock, start_date, end_date, record_percentage_to_predict)
         frame[stock] = price
-    #frame.to_csv('1.csv')
     table = pd.DataFrame(frame)
-    plt.plot(pd.DataFrame(frame))
-    pd.DataFrame(frame).to_csv('Out.csv')
+    plt.plot(table)
+    table.to_csv('Out.csv')
 
     returns_daily = table.pct_change()
     returns_daily.to_csv('Out1.csv')
+
+    # Calculate reusult
+
+
     returns_annual = ((1 + returns_daily.mean()) ** 254) - 1
     returns_annual.to_csv('Out2.csv')
 
-    # get daily and covariance of returns of the stock
     cov_daily = returns_daily.cov()
     cov_annual = cov_daily * 250
 
-    # empty lists to store returns, volatility and weights of imiginary portfolios
     port_returns = []
     port_volatility = []
     sharpe_ratio = []
     stock_weights = []
 
-    # set the number of combinations for imaginary portfolios
     num_assets = len(selected)
-    num_portfolios = Num_porSimulation  # Change porfolio numbers here
-
-    # set random seed for reproduction's sake
+    num_portfolios = Num_porSimulation
     np.random.seed(101)
 
-    # populate the empty lists with each portfolios returns,risk and weights
-    for single_portfolio in range(num_portfolios):
+    for _ in range(num_portfolios):
         weights = np.random.random(num_assets)
         weights /= np.sum(weights)
         returns = np.dot(weights, returns_annual)
@@ -186,30 +186,36 @@ def random_forest(start_date, end_date, Num_porSimulation, selected, record_perc
         port_volatility.append(volatility * 100)
         stock_weights.append(weights)
 
-    # a dictionary for Returns and Risk values of each portfolio
     portfolio = {'Returns': port_returns,
                  'Volatility': port_volatility,
                  'Sharpe Ratio': sharpe_ratio}
-
-    # extend original dictionary to accomodate each ticker and weight in the portfolio
     for counter, symbol in enumerate(selected):
         portfolio[symbol + ' Weight'] = [Weight[counter] for Weight in stock_weights]
-
-    # make a nice dataframe of the extended dictionary
     df = pd.DataFrame(portfolio)
-
-    # get better labels for desired arrangement of columns
     column_order = ['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected]
-
-    # reorder dataframe columns
     df = df[column_order]
-    plot_portfolio_tabs(df, selected)
+    optimal_portfolios = plot_portfolio_tabs(df, selected)
+
+    def get_weights(optimal_portfolios, label, selected):
+        return np.array([optimal_portfolios[label][stock + ' Weight'] / 100 for stock in selected])
+
+    result = None
+    if optimal_portfolios:
+        returns_daily_selected = returns_daily[selected].dropna()
+        result = pd.DataFrame(index=returns_daily_selected.index)
+        for label, colname in zip([
+            '🚩 Max Returns', '🟨 Min Volatility', '🟩 Max Sharpe Ratio'],
+            ['Max Returns', 'Min Volatility', 'Max Sharpe Ratio']):
+            if label in optimal_portfolios:
+                weights = get_weights(optimal_portfolios, label, selected)
+                result[colname] = (returns_daily_selected * weights).sum(axis=1)
+        st.subheader("Daily Portfolio Returns for Optimal Portfolios")
+        st.dataframe(result.style.format("{:.4f}"))
+    # Return both optimal_portfolios and result DataFrame
+    return optimal_portfolios, result
 
 def plot_portfolio_tabs(df, selected):
-    import matplotlib.pyplot as plt
-    import streamlit as st
-    import numpy as np
-    import pandas as pd
+
     
     # Find optimal portfolios
     min_volatility = df['Volatility'].min()
@@ -238,8 +244,14 @@ def plot_portfolio_tabs(df, selected):
         optimal_names.append("🟩 Max Sharpe Ratio")
     if optimal_rows:
         optimal_df = pd.DataFrame(optimal_rows, index=optimal_names)
+        # Build the optimal portfolios dictionary
+        optimal_portfolios = {
+            name: optimal_df.loc[name].to_dict()
+            for name in optimal_df.index
+        }
     else:
         optimal_df = None
+        optimal_portfolios = {}
 
     # 1. Optimal Portfolios Table
     st.subheader("Optimal Portfolios Table")
@@ -329,141 +341,8 @@ def plot_portfolio_tabs(df, selected):
     plt.tight_layout()
     st.pyplot(plt.gcf())
 
+    return optimal_portfolios
 
-def markovich(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
-
-    #yf.pdr_override()
-    frame = {}
-    for stock in selected:
-        # call price_forecast on each stock and get prediction for it's prices
-        price = price_forecast(stock, start_date, end_date, record_percentage_to_predict)
-        frame[stock] = price
-    #frame.to_csv('1.csv')
-    table = pd.DataFrame(frame)
-    plt.plot(pd.DataFrame(frame))
-    pd.DataFrame(frame).to_csv('Out.csv')
-
-    returns_daily = table.pct_change()
-    returns_daily.to_csv('Out1.csv')
-    returns_annual = ((1 + returns_daily.mean()) ** 254) - 1
-    returns_annual.to_csv('Out2.csv')
-
-    # get daily and covariance of returns of the stock
-    cov_daily = returns_daily.cov()
-    cov_annual = cov_daily * 250
-
-    # empty lists to store returns, volatility and weights of imiginary portfolios
-    port_returns = []
-    port_volatility = []
-    sharpe_ratio = []
-    stock_weights = []
-
-    # set the number of combinations for imaginary portfolios
-    num_assets = len(selected)
-    num_portfolios = Num_porSimulation  # Change porfolio numbers here
-
-    # set random seed for reproduction's sake
-    np.random.seed(101)
-
-    # populate the empty lists with each portfolios returns,risk and weights
-    for single_portfolio in range(num_portfolios):
-        weights = np.random.random(num_assets)
-        weights /= np.sum(weights)
-        returns = np.dot(weights, returns_annual)
-        volatility = np.sqrt(np.dot(weights.T, np.dot(cov_annual, weights)))
-        sharpe = returns / volatility
-        sharpe_ratio.append(sharpe)
-        port_returns.append(returns * 100)
-        port_volatility.append(volatility * 100)
-        stock_weights.append(weights)
-
-    # a dictionary for Returns and Risk values of each portfolio
-    portfolio = {'Returns': port_returns,
-                 'Volatility': port_volatility,
-                 'Sharpe Ratio': sharpe_ratio}
-
-    # extend original dictionary to accomodate each ticker and weight in the portfolio
-    for counter, symbol in enumerate(selected):
-        portfolio[symbol + ' Weight'] = [Weight[counter] for Weight in stock_weights]
-
-    # make a nice dataframe of the extended dictionary
-    df = pd.DataFrame(portfolio)
-
-    # get better labels for desired arrangement of columns
-    column_order = ['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected]
-
-    # reorder dataframe columns
-    df = df[column_order]
-    plot_portfolio_tabs(df, selected)
-
-def prophet(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict):
-    frame = {}
-    for stock in selected:
-        price = price_forecast_prophet(stock, start_date, end_date, record_percentage_to_predict)
-        frame[stock] = price
-    table = pd.DataFrame(frame)
-    pd.DataFrame(frame).to_csv('Out.csv')
-    returns_daily = table.pct_change()
-    returns_daily.to_csv('Out1.csv')
-    returns_annual = ((1 + returns_daily.mean()) ** 254) - 1
-    returns_annual.to_csv('Out2.csv')
-    cov_daily = returns_daily.cov()
-    cov_annual = cov_daily * 250
-    port_returns = []
-    port_volatility = []
-    sharpe_ratio = []
-    stock_weights = []
-    num_assets = len(selected)
-    num_portfolios = Num_porSimulation
-    np.random.seed(101)
-    for single_portfolio in range(num_portfolios):
-        weights = np.random.random(num_assets)
-        weights /= np.sum(weights)
-        returns = np.dot(weights, returns_annual)
-        volatility = np.sqrt(np.dot(weights.T, np.dot(cov_annual, weights)))
-        sharpe = returns / volatility
-        sharpe_ratio.append(sharpe)
-        port_returns.append(returns * 100)
-        port_volatility.append(volatility * 100)
-        stock_weights.append(weights)
-    portfolio = {'Returns': port_returns,
-                 'Volatility': port_volatility,
-                 'Sharpe Ratio': sharpe_ratio}
-    for counter, symbol in enumerate(selected):
-        portfolio[symbol + ' Weight'] = [Weight[counter] for Weight in stock_weights]
-    df = pd.DataFrame(portfolio)
-    column_order = ['Returns', 'Volatility', 'Sharpe Ratio'] + [stock + ' Weight' for stock in selected]
-    df = df[column_order]
-    plot_portfolio_tabs(df, selected)
-
-def price_forecast_prophet(stock, start_date, end_date, record_percentage_to_predict):
-    df = yf.download(stock, start=start_date, end=end_date)
-
-    # Only keep 'Date' and 'Close', ensure it's in the right format
-    df = df.reset_index()[['Date', 'Close']].dropna()
-    df.columns = ['ds', 'y']  # Prophet requires these exact names
-    df['y'] = pd.to_numeric(df['y'], errors='coerce')  # Coerce non-numeric values
-
-    # Drop any rows with NaN after coercion
-    df = df.dropna()
-
-    # Forecast horizon
-    forecast_out = int(math.ceil(record_percentage_to_predict * len(df)))
-    train_df = df[:-forecast_out]
-
-    # Fit the Prophet model
-    model = Prophet()
-    model.fit(train_df)
-
-    # Create future dataframe and predict
-    future = model.make_future_dataframe(periods=forecast_out)
-    forecast = model.predict(future)
-
-    # Return only forecasted values (the "future")
-    forecast_df = forecast[['ds', 'yhat']].set_index('ds')
-    predicted_series = forecast_df['yhat'].tail(forecast_out)
-
-    return predicted_series
 
 # Set page configuration for the standalone app
 st.set_page_config(
@@ -502,7 +381,7 @@ st.markdown("""
 # Page title and description
 st.markdown("<h1 class='main-header'>Modern Portfolio Theory (MPT) Optimizer</h1>", unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["ℹ️ About MPT", "🔧 How to use?", "📈 Portfolio Optimization"])
+tab1, tab2, tab3, tab4 = st.tabs(["ℹ️ About MPT", "🔧 How to use?", "📈 Portfolio Optimization", "💲Investment Simulator"])
 # MPT explanation
 with tab1:
     col1, col2 = st.columns(2)
@@ -562,7 +441,7 @@ with tab2:
     st.markdown("""
     **🔧 Steps to Optimize Your Portfolio:**
     
-    1. **Select Model**: Choose a forecasting model (e.g., Linear Regression, Random Forest, Prophet).
+    1. **Select Model**: Choose a forecasting model (e.g., Linear Regression, Random Forest).
     2. **Select Stocks**: Choose the stocks you want to include in your portfolio.
     3. **Set Parameters**: Define the time period and number of simulations for optimization.
     4. **Run Optimization**: Click the button to run the MPT optimization.
@@ -572,6 +451,12 @@ with tab2:
     """)
 
 
+# Update the models dictionary in the sidebar to use the new unified function
+models = {
+    'Linear Regression': lambda *args, **kwargs: portfolio_simulation(*args, **kwargs, model_type="linear"),
+    'Random Forest': lambda *args, **kwargs: portfolio_simulation(*args, **kwargs, model_type="rf")
+}
+
 # Add a session state variable to store the latest optimization results
 if 'optimization_result' not in st.session_state:
     st.session_state['optimization_result'] = None
@@ -580,7 +465,6 @@ if 'last_params' not in st.session_state:
 
 with st.sidebar:
     # models
-    models = {'Linear Regression': markovich, 'Random Forest': random_forest, 'Prophet': prophet}
     st.subheader("Pick a model for price forecasting")
     selected_model = st.selectbox(
         "Select Model",
@@ -605,9 +489,9 @@ with st.sidebar:
     st.subheader("Portfolio Optimization Parameters")
     col1, col2 = st.columns(2)
     with col1:
-        start_date = st.date_input("Start Date", datetime.datetime.now() - timedelta(days=365))
+        start_date = st.date_input("Start Date", datetime.datetime.now() - timedelta(days=365*2))
     with col2:
-        end_date = st.date_input("End Date", datetime.datetime.now())
+        end_date = st.date_input("End Date", datetime.datetime.now()- timedelta(days=1))
 
     Num_porSimulation = st.slider(
         "Number of Portfolio Simulations",
@@ -643,7 +527,7 @@ def run_and_store_optimization():
     plt.close('all')
     # Run optimization and store a function to re-render results
     def render():
-        models[selected_model](start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict)
+        portfolio_simulation(start_date, end_date, Num_porSimulation, selected, record_percentage_to_predict, models[selected_model])
     
     st.session_state['optimization_result'] = render
     st.session_state['last_params'] = current_params
@@ -668,16 +552,56 @@ with tab3:
 
     if st.session_state.get("run_opt", False):
         params = st.session_state["run_opt_params"]
-        # Directly call the selected model function instead of cached_model
-        models[selected_model](
+        optimal_portfolios, result = portfolio_simulation(
             params["start_date"],
             params["end_date"],
             params["Num_porSimulation"],
             list(params["selected"]),
-            params["record_percentage_to_predict"]
+            params["record_percentage_to_predict"],
+            models[selected_model]
         )
+        st.session_state['last_portfolio_returns'] = result
     else:
         st.info("Click the button to run the portfolio optimization.")
         st.markdown("""
         **ℹ️ Note**: The optimization process may take some time depending on the number of simulations and selected stocks.
         """)
+
+with tab4:
+    st.subheader("Portfolio Value Forecasting")
+    st.markdown("""
+    Enter an initial investment amount to see how the value of each optimal portfolio would have evolved over time, based on the simulated daily returns.
+    """)
+    result = st.session_state.get('last_portfolio_returns')
+    if result is not None and not result.empty:
+        initial_investment = st.number_input(
+            "Initial Investment Amount ($)",
+            min_value=100,
+            max_value=1000000,
+            value=10000,
+            step=100
+        )
+        # Remove date range selection for forecasting
+        value_df = pd.DataFrame(index=result.index)
+        for col in result.columns:
+            value_df[col] = initial_investment * (1 + result[col]).cumprod()
+        # Calculate min_val for y-axis
+        min_val = value_df.min().min() if not value_df.empty else 0
+        # Custom plot with y-axis starting below min value (interactive plotly)
+        import plotly.graph_objs as go
+        fig = go.Figure()
+        for col in value_df.columns:
+            fig.add_trace(go.Scatter(x=value_df.index, y=value_df[col], mode='lines', name=col))
+        fig.update_layout(
+            title='Portfolio Value Over Time',
+            xaxis_title='Date',
+            yaxis_title='Portfolio Value ($)',
+            yaxis=dict(range=[max(0, min_val - 200), value_df.max().max() * 1.05]),
+            hovermode='x unified',
+            legend_title_text='Portfolio Type',
+            template='plotly_white'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(value_df.style.format("{:.2f}"))
+    else:
+        st.info("Run the optimization first to see value forecasting.")
